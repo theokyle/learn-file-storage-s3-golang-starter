@@ -52,6 +52,8 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	defer file.Close()
+
 	contentType := fileHeader.Header.Get("Content-Type")
 	mediaType, _, err := mime.ParseMediaType(contentType)
 	if (mediaType != "image/jpeg" && mediaType != "image/png") || err != nil {
