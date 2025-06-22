@@ -1,9 +1,15 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -46,10 +52,30 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	mediaType := fileHeader.Header.Get("Content-Type")
-	image, err := io.ReadAll(file)
+	contentType := fileHeader.Header.Get("Content-Type")
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if (mediaType != "image/jpeg" && mediaType != "image/png") || err != nil {
+		respondWithError(w, http.StatusBadRequest, "Wrong media type", err)
+		return
+	}
+	key := make([]byte, 32)
+	rand.Read(key)
+	name := base64.RawURLEncoding.EncodeToString(key)
+
+	fileExtension := strings.Split(mediaType, "/")[1]
+	fileName := fmt.Sprintf("%s.%s", name, fileExtension)
+
+	filepath := filepath.Join(cfg.assetsRoot, fileName)
+	fmt.Println(filepath)
+	newFile, err := os.Create(filepath)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Couldn't read file", err)
+		respondWithError(w, http.StatusBadRequest, "Couldn't create file", err)
+		return
+	}
+
+	_, err = io.Copy(newFile, file)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Couldn't copy image contents", err)
 		return
 	}
 
@@ -64,14 +90,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	thumbnail := thumbnail{
-		data:      image,
-		mediaType: mediaType,
-	}
-
-	videoThumbnails[videoID] = thumbnail
-
-	thumbnailUrl := fmt.Sprintf("http://localhost:%s/api/thumbnails/%s", cfg.port, videoIDString)
+	thumbnailUrl := fmt.Sprintf("http://localhost:%s/assets/%s", cfg.port, fileName)
 	video.ThumbnailURL = &thumbnailUrl
 
 	err = cfg.db.UpdateVideo(video)
